@@ -10,17 +10,55 @@ class TaskManagerApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
-      routes: {
-        '/': (context) => HomeScreen(),
-        '/grid': (context) => CategoryScreen(),
-        '/details': (context) => TaskDetailsScreen(),
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/':
+            return MaterialPageRoute(builder: (context) => HomeScreen());
+          case '/addTask':
+            return MaterialPageRoute(
+              builder: (context) => AddEditTaskScreen(),
+            );
+          case '/details':
+            final task = settings.arguments as Map<String, String>;
+            return MaterialPageRoute(
+              builder: (context) => TaskDetailsScreen(task: task),
+            );
+          default:
+            return MaterialPageRoute(
+              builder: (context) => Scaffold(
+                body: Center(child: Text('Unknown Route')),
+              ),
+            );
+        }
       },
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  final List<String> tasks = List.generate(10, (index) => 'Task $index');
+
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<Map<String, String>> tasks = [];
+
+  void addOrEditTask(Map<String, String> task, [int? index]) {
+    setState(() {
+      if (index == null) {
+        tasks.add(task); // Add new task
+      } else {
+        tasks[index] = task; // Update existing task
+      }
+    });
+  }
+
+  void deleteTask(int index) {
+    setState(() {
+      tasks.removeAt(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,43 +67,63 @@ class HomeScreen extends StatelessWidget {
         title: Text('Tasks Manager'),
         centerTitle: true,
       ),
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              child: Text(
-                'Menu',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-              decoration: BoxDecoration(color: Colors.blue),
-            ),
-            ListTile(
-              title: Text('View Categories'),
-              onTap: () {
-                Navigator.pushNamed(context, '/grid');
-              },
-            ),
-          ],
-        ),
-      ),
       body: ListView.builder(
         itemCount: tasks.length,
         itemBuilder: (context, index) {
           return ListTile(
-            leading: Icon(Icons.check_circle_outline),
-            title: Text(tasks[index]),
+            leading: Icon(Icons.task_alt),
+            title: Text(tasks[index]['name']!),
+            subtitle: Text(tasks[index]['description']!),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.edit),
+                  onPressed: () async {
+                    final updatedTask = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddEditTaskScreen(
+                          task: tasks[index],
+                          index: index,
+                        ),
+                      ),
+                    );
+                    if (updatedTask != null) {
+                      addOrEditTask(updatedTask as Map<String, String>, index);
+                    }
+                  },
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete, color: Colors.red),
+                  onPressed: () {
+                    deleteTask(index);
+                  },
+                ),
+              ],
+            ),
             onTap: () {
-              Navigator.pushNamed(context, '/details',
-                  arguments: tasks[index]);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TaskDetailsScreen(task: tasks[index]),
+                ),
+              );
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Add new tasks feature coming soon!')),
+        onPressed: () async {
+          final newTask = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddEditTaskScreen(),
+            ),
           );
+          if (newTask != null) {
+            addOrEditTask(newTask as Map<String, String>);
+          }
         },
         child: Icon(Icons.add),
       ),
@@ -73,89 +131,115 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class CategoryScreen extends StatelessWidget {
-  final List<String> categories = [
-    'Work',
-    'Personal',
-    'Health',
-    'Shopping',
-    'Learning',
-    'Hobbies',
-  ];
+class AddEditTaskScreen extends StatefulWidget {
+  final Map<String, String>? task;
+  final int? index;
+
+  AddEditTaskScreen({this.task, this.index});
+
+  @override
+  _AddEditTaskScreenState createState() => _AddEditTaskScreenState();
+}
+
+class _AddEditTaskScreenState extends State<AddEditTaskScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.task != null) {
+      _nameController.text = widget.task!['name']!;
+      _descriptionController.text = widget.task!['description']!;
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Categories')),
-      body: GridView.builder(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          return GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${categories[index]} selected')),
-              );
-            },
-            child: Card(
-              color: Colors.blue[100],
-              child: Center(
-                child: Text(
-                  categories[index],
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+      appBar: AppBar(
+        title: Text(widget.index == null ? 'Add Task' : 'Edit Task'),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: InputDecoration(labelText: 'Task Name'),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a task name';
+                  }
+                  return null;
+                },
               ),
-            ),
-          );
-        },
+              TextFormField(
+                controller: _descriptionController,
+                decoration: InputDecoration(labelText: 'Task Description'),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a task description';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    Navigator.pop(context, {
+                      'name': _nameController.text,
+                      'description': _descriptionController.text,
+                    });
+                  }
+                },
+                child: Text(widget.index == null ? 'Add Task' : 'Update Task'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class TaskDetailsScreen extends StatefulWidget {
-  @override
-  _TaskDetailsScreenState createState() => _TaskDetailsScreenState();
-}
+class TaskDetailsScreen extends StatelessWidget {
+  final Map<String, String> task;
 
-class _TaskDetailsScreenState extends State<TaskDetailsScreen> {
-  bool _completed = false;
+  TaskDetailsScreen({required this.task});
 
   @override
   Widget build(BuildContext context) {
-    final String taskName = ModalRoute.of(context)!.settings.arguments as String;
-
     return Scaffold(
-      appBar: AppBar(title: Text('Task Details')),
+      appBar: AppBar(title: Text(task['name']!)),
       body: Center(
-        child: GestureDetector(
-          onTap: () {
-            setState(() {
-              _completed = !_completed;
-            });
-          },
-          child: AnimatedContainer(
-            duration: Duration(seconds: 1),
-            padding: EdgeInsets.all(20),
-            width: _completed ? 250 : 200,
-            height: _completed ? 100 : 150,
-            decoration: BoxDecoration(
-              color: _completed ? Colors.green[200] : Colors.red[200],
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Center(
-              child: Text(
-                _completed
-                    ? '$taskName Completed!'
-                    : 'Mark $taskName as Complete',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                task['name']!,
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
-            ),
+              SizedBox(height: 10),
+              Text(
+                task['description']!,
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       ),
